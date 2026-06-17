@@ -1,40 +1,48 @@
 #include "fs.h"
 #include "helper.h"
 
+//Peninah
 int fs_format(const char *disk_path) {
-    // TODO: Implement according to requirements
+    // TODO: Implement according to requirements 
+    // Initialize Superblock
+    // Initialize Block Bitmap
+    // Initialize Inode Table
+    // Initialize Data Blocks
     return 0;
 }
-
+//Avi
 int fs_mount(const char *disk_path) {
     // TODO: Implement according to requirements
+    // read superblock and write it to the memory
+
     return 0;
 }
-
+//Peninah
 void fs_unmount() {
     // TODO: Implement according to requirements
+    // write any changed data back into the file and clear the memory
 }
-
+//Peninah
 int fs_create(const char *filename) {
     // TODO: Implement according to requirements
     return 0;
 }
-
+//Avi
 int fs_delete(const char *filename) {
     // TODO: Implement according to requirements
     return 0;
 }
-
+//Avi
 int fs_list(char filenames[][MAX_FILENAME], int max_files) {
     // TODO: Implement according to requirements
     return 0;
 }
-
+//Avi
 int fs_write(const char *filename, const void *data, int size) {
     // TODO: Implement according to requirements
     return 0;
 }
-
+//Peninah
 int fs_read(const char *filename, void *buffer, int size) {
     // TODO: Implement according to requirements
     return 0;
