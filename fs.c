@@ -82,7 +82,7 @@ void fs_unmount() {
     close(disk_fd);
     disk_fd = -1;
 }
-//Creates a new empty file in the filesystem
+
 int fs_create(const char *filename) {
     // check if file name is legal
     if (filename == NULL || strlen(filename) >= MAX_FILENAME) {
@@ -130,15 +130,14 @@ int fs_create(const char *filename) {
 }
 
 int fs_delete(const char *filename) { //TODO: Needs to be tested. (Avi)
+    if (disk_fd == -1) { //Checks in drive is mounted
+        return -2;
+    }
     int inode_index = find_inode(filename);
     if (inode_index == -1) {
         return -1;
     }
     inode* current_node = &inode_table[inode_index];
-    current_node->used = 0;
-    current_node->size = 0;
-    current_node->name[0] = '\0';
-    sb.free_inodes++;
     for (int i = 0; i < MAX_DIRECT_BLOCKS; i++) {
         int block_ptr = current_node->blocks[i];
         if (block_ptr != -1) { //TODO: Need to make sure -1 is what we expect for the last block
@@ -147,10 +146,18 @@ int fs_delete(const char *filename) { //TODO: Needs to be tested. (Avi)
             sb.free_blocks++;
         }
     }
+    current_node->used = 0;
+    current_node->size = 0;
+    current_node->name[0] = '\0';
+    sb.free_inodes++;
+    write_back_sb();
     return 0;
 }
 
 int fs_list(char filenames[][MAX_FILENAME], int max_files) { //TODO: Needs to be tested. (Avi)
+    if (disk_fd == -1) { //Checks in drive is mounted
+        return -1;
+    }
     int count = 0;
     for (int i = 0; i < MAX_FILES; i++) {
         if (inode_table[i].used == 1) {
@@ -165,9 +172,52 @@ int fs_list(char filenames[][MAX_FILENAME], int max_files) { //TODO: Needs to be
     return count;
 }
 
-//Avi
 int fs_write(const char *filename, const void *data, int size) {
-    // TODO: Implement according to requirements
+    if (disk_fd == -1) { //Checks in drive is mounted
+        return -3;
+    }
+    if (size < 0) { //Invalid size
+        return -1;
+    }
+    int node_idx = find_inode(filename);
+    if (node_idx == -1) { //Not a valid filename
+        return -1;
+    }
+    if (size > sb.block_size * MAX_DIRECT_BLOCKS) { //Too large for filesystem
+        return -3;
+    }
+    inode* working_node = &inode_table[node_idx];
+    int current_block = 0;
+    while(current_block * sb.block_size < size) { //Initialize all needed blocks
+        int block_ptr = working_node->blocks[current_block];
+        if (block_ptr == -1) { //Finds a new block if needed //TODO: Need to make sure -1 is what we expect for the last block
+            block_ptr = find_free_block();
+            if (block_ptr == -1) { //Out of space
+                return -2;
+            }
+            working_node->blocks[current_block] = block_ptr;
+            mark_block_used(block_ptr);
+            sb.free_blocks--;
+        }
+        current_block++;
+    }
+    for (int i = current_block; i < MAX_DIRECT_BLOCKS; i++) { //Remove excess blocks
+        int block_ptr = working_node->blocks[i];
+        if (block_ptr != -1) {
+            mark_block_free(block_ptr);
+            working_node->blocks[i] = -1;
+            sb.free_blocks++;
+        }
+    }
+    working_node->size = size;
+    write_back_sb();
+    write_inode(node_idx, working_node);
+
+    for (int i = 0; i < current_block; i++) { //Writes data
+        void* block_data = (void*) (((char*)data) + (i * sb.block_size));
+        lseek(disk_fd, working_node->blocks[i] * sb.block_size, SEEK_SET);
+        write(disk_fd, block_data, sb.block_size);
+    }
     return 0;
 }
 
@@ -248,8 +298,12 @@ int find_free_inode() {
 }
 
 int find_free_block() {
-    // TODO: Implement according to requirements
-    return 0;
+    for (int i = 0; i < MAX_BLOCKS; i++) {
+        if (bitmap[i/8] & (1 << (i%8))) {
+            return i;
+        }
+    }
+    return -1;
 }
 
 void mark_block_used(int block_num) {
@@ -266,4 +320,11 @@ void read_inode(int inode_num, inode *target) {
 
 void write_inode(int inode_num, const inode *source) {
     // TODO: Implement according to requirements
+}
+
+void write_back_sb() {
+    char data[BLOCK_SIZE] = {0};
+    memcpy(data, &sb, sizeof(superblock));
+    lseek(disk_fd, 0, SEEK_SET);
+    write(disk_fd, data, BLOCK_SIZE);
 }
