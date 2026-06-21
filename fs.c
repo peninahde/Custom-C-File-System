@@ -10,9 +10,9 @@ int fs_format(const char *disk_path) {
     // Initialize Superblock (4KB = 1 block)
     sb.total_blocks = MAX_BLOCKS;
     sb.block_size = BLOCK_SIZE;
-    sb.free_blocks = 2550;
+    sb.free_blocks = 2550; //TODO: can we make it a non-constant?
     sb.total_inodes = MAX_FILES;
-    sb.free_inodes = 256;
+    sb.free_inodes = 256; //TODO: can we make it a non-constant?
 
     // Initialize Block Bitmap (4KB = 1 block)
     for (int i = 0; i < (MAX_BLOCKS / 8); i++){
@@ -32,7 +32,7 @@ int fs_format(const char *disk_path) {
         }
 
         for (int j = 0; j < MAX_DIRECT_BLOCKS; j++) { //zero out the array of direct block pointers
-            inode_table[i].blocks[j] = 0;
+            inode_table[i].blocks[j] = 0; //TODO: Switch to -1 
         }
     }
 
@@ -109,8 +109,8 @@ int fs_create(const char *filename) {
 
     // initialize the inode with the filename and zero size
     // clear out old name and put in the new name
-    inode_table[free_inode_index].name[0] = '\0';
-    strncpy(inode_table[free_inode_index].name, filename, MAX_FILENAME);
+    inode_table[free_inode_index].name[0] = '\0'; //TODO: Necessary? I am already doing this in fs_delete. 
+    strncpy(inode_table[free_inode_index].name, filename, MAX_FILENAME); //TODO: Why using strncpy and not =?
 
     //set the size to 0
     inode_table[free_inode_index].size = 0;
@@ -124,20 +124,47 @@ int fs_create(const char *filename) {
     inode_table[free_inode_index].used = 1;
 
     // updates the superblock (decrease the free_inodes)
-    sb.free_blocks--;
+    sb.free_blocks--; //TODO: Did you mean sb.free_inodes--?
 
     return 0;
 }
-//Avi
-int fs_delete(const char *filename) {
-    // TODO: Implement according to requirements
+
+int fs_delete(const char *filename) { //TODO: Needs to be tested. (Avi)
+    int inode_index = find_inode(filename);
+    if (inode_index == -1) {
+        return -1;
+    }
+    inode* current_node = &inode_table[inode_index];
+    current_node->used = 0;
+    current_node->size = 0;
+    current_node->name[0] = '\0';
+    sb.free_inodes++;
+    for (int i = 0; i < MAX_DIRECT_BLOCKS; i++) {
+        int block_ptr = current_node->blocks[i];
+        if (block_ptr != -1) { //TODO: Need to make sure -1 is what we expect for the last block
+            mark_block_free(block_ptr);
+            current_node->blocks[i] = -1;
+            sb.free_blocks++;
+        }
+    }
     return 0;
 }
-//Avi
-int fs_list(char filenames[][MAX_FILENAME], int max_files) {
-    // TODO: Implement according to requirements
-    return 0;
+
+int fs_list(char filenames[][MAX_FILENAME], int max_files) { //TODO: Needs to be tested. (Avi)
+    int count = 0;
+    for (int i = 0; i < MAX_FILES; i++) {
+        if (inode_table[i].used == 1) {
+            if (count == max_files) {
+                return count;
+            }
+            strncpy(filenames[count], inode_table[i].name, MAX_FILENAME);
+            count++;
+
+        }
+    }
+    return count;
 }
+
 //Avi
 int fs_write(const char *filename, const void *data, int size) {
     // TODO: Implement according to requirements
@@ -226,11 +253,11 @@ int find_free_block() {
 }
 
 void mark_block_used(int block_num) {
-    // TODO: Implement according to requirements
+    bitmap[block_num/8] |= (1 << (block_num/8));
 }
 
 void mark_block_free(int block_num) {
-    // TODO: Implement according to requirements
+    bitmap[block_num/8] &= ~(1 << (block_num/8));
 }
 
 void read_inode(int inode_num, inode *target) {
