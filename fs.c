@@ -54,10 +54,23 @@ int fs_format(const char *disk_path) {
 
     return 0;
 }
-//Avi
-int fs_mount(const char *disk_path) {
-    // TODO: Implement according to requirements
 
+int fs_mount(const char *disk_path) {
+    disk_fd = open(disk_path, O_RDWR | O_CREAT, 0644);
+    if (disk_fd == -1) { //If failed to open
+        return -1;
+    }
+    lseek(disk_fd, 0, SEEK_SET); //Read Superblock
+    read(disk_fd, &sb, sizeof(superblock));
+    if(sb.block_size != BLOCK_SIZE || sb.total_blocks != MAX_BLOCKS || sb.total_inodes != MAX_FILES) { //Validate Superblock
+        disk_fd = -1;
+        return -1;
+    }
+    lseek(disk_fd, sb.block_size, SEEK_SET); //Read Bitmap
+    read(disk_fd, bitmap, sizeof(bitmap));
+    for (int i = 0; i < MAX_FILES; i++) { //Read Inode table
+        read_inode(i, &inode_table[i]);
+    }
     return 0;
 }
 //Ensures all pending changes are written to disk and closes the filesystem 
@@ -127,7 +140,7 @@ int fs_create(const char *filename) {
     return 0;
 }
 
-int fs_delete(const char *filename) { //TODO: Needs to be tested. (Avi)
+int fs_delete(const char *filename) {
     if (disk_fd == -1) { //Checks in drive is mounted
         return -2;
     }
@@ -154,7 +167,7 @@ int fs_delete(const char *filename) { //TODO: Needs to be tested. (Avi)
     return 0;
 }
 
-int fs_list(char filenames[][MAX_FILENAME], int max_files) { //TODO: Needs to be tested. (Avi)
+int fs_list(char filenames[][MAX_FILENAME], int max_files) {
     if (disk_fd == -1) { //Checks in drive is mounted
         return -1;
     }
@@ -222,9 +235,12 @@ int fs_write(const char *filename, const void *data, int size) {
     working_node->size = size;
     for (int i = 0; i < num_of_blocks; i++) { //Writes data
         void* block_data = (void*) (((char*)data) + (i * sb.block_size));
-        //TODO: If not a perfect multiple of block size
         lseek(disk_fd, working_node->blocks[i] * sb.block_size, SEEK_SET);
-        write(disk_fd, block_data, sb.block_size);
+        int write_size = sb.block_size;
+        if (i == num_of_blocks - 1 && size % sb.block_size != 0) {
+            write_size = size % sb.block_size;
+        }
+        write(disk_fd, block_data, write_size);
     }
     write_back_sb();
     write_inode(node_idx, working_node);
@@ -309,7 +325,7 @@ int find_free_inode() {
 }
 
 int find_free_block() {
-    for (int i = 0; i < MAX_BLOCKS; i++) {
+    for (int i = 10; i < MAX_BLOCKS; i++) {
         if (bitmap[i/8] & (1 << (i%8))) {
             return i;
         }
@@ -326,18 +342,24 @@ void mark_block_free(int block_num) {
 }
 
 void read_inode(int inode_num, inode *target) {
-    // TODO: Implement according to requirements
+    int inodes_per_page = sb.block_size / sizeof(inode); //Inodes might not fit evenly into a page
+    int block = 2 + (inode_num / inodes_per_page);
+    int offset_on_page = inode_num % inodes_per_page;
+    lseek(disk_fd, (block * sb.block_size) + (offset_on_page * sizeof(inode)), SEEK_SET);
+    read(disk_fd, target, sizeof(inode));
 }
 
 void write_inode(int inode_num, const inode *source) {
-    // TODO: Implement according to requirements
+    int inodes_per_page = sb.block_size / sizeof(inode); //Inodes might not fit evenly into a page
+    int block = 2 + (inode_num / inodes_per_page);
+    int offset_on_page = inode_num % inodes_per_page;
+    lseek(disk_fd, (block * sb.block_size) + (offset_on_page * sizeof(inode)), SEEK_SET);
+    write(disk_fd, source, sizeof(inode));
 }
 
 void write_back_sb() {
-    char data[BLOCK_SIZE] = {0};
-    memcpy(data, &sb, sizeof(superblock));
     lseek(disk_fd, 0, SEEK_SET);
-    write(disk_fd, &sb, BLOCK_SIZE);
+    write(disk_fd, &sb, sizeof(superblock));
 }
 
 void write_bitmap() {
