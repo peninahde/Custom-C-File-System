@@ -77,7 +77,7 @@ void fs_unmount() {
     // read inode table and write it to memory
     lseek(disk_fd, 2 * BLOCK_SIZE, SEEK_SET); //go to beginning of inode_table block
     write(disk_fd, inode_table, sizeof(inode_table)); //write the contents of inode_table to the disk
-
+    
     //close disk
     close(disk_fd);
     disk_fd = -1;
