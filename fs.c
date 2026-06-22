@@ -32,7 +32,7 @@ int fs_format(const char *disk_path) {
         }
 
         for (int j = 0; j < MAX_DIRECT_BLOCKS; j++) { //zero out the array of direct block pointers
-            inode_table[i].blocks[j] = 0; //TODO: Switch to -1 
+            inode_table[i].blocks[j] = -1;
         }
     }
 
@@ -45,7 +45,7 @@ int fs_format(const char *disk_path) {
 
     write(disk_fd, bitmap, sizeof(bitmap)); //write the bitmap (block 1)
     lseek(disk_fd, 2 * BLOCK_SIZE, SEEK_SET); // jump to the end of the bitmap block
-
+    //TODO: Might not be able to do 2*BLOCK_SIZE if not contiguous
     write(disk_fd, inode_table, sizeof(inode_table)); //write the inode table (8 blocks)
 
     lseek(disk_fd, (MAX_BLOCKS * BLOCK_SIZE) - 1, SEEK_SET); //jump to the last byte of the 10MB file
@@ -109,7 +109,6 @@ int fs_create(const char *filename) {
 
     // initialize the inode with the filename and zero size
     // clear out old name and put in the new name
-    inode_table[free_inode_index].name[0] = '\0'; //TODO: Necessary? I am already doing this in fs_delete. 
     strncpy(inode_table[free_inode_index].name, filename, MAX_FILENAME); //TODO: Why using strncpy and not =?
 
     //set the size to 0
@@ -124,7 +123,7 @@ int fs_create(const char *filename) {
     inode_table[free_inode_index].used = 1;
 
     // updates the superblock (decrease the free_inodes)
-    sb.free_blocks--; //TODO: Did you mean sb.free_inodes--?
+    sb.free_inodes--;
 
     return 0;
 }
@@ -134,13 +133,13 @@ int fs_delete(const char *filename) { //TODO: Needs to be tested. (Avi)
         return -2;
     }
     int inode_index = find_inode(filename);
-    if (inode_index == -1) {
+    if (inode_index == -1) { //File not found
         return -1;
     }
     inode* current_node = &inode_table[inode_index];
     for (int i = 0; i < MAX_DIRECT_BLOCKS; i++) {
         int block_ptr = current_node->blocks[i];
-        if (block_ptr != -1) { //TODO: Need to make sure -1 is what we expect for the last block
+        if (block_ptr != -1) {
             mark_block_free(block_ptr);
             current_node->blocks[i] = -1;
             sb.free_blocks++;
@@ -151,6 +150,8 @@ int fs_delete(const char *filename) { //TODO: Needs to be tested. (Avi)
     current_node->name[0] = '\0';
     sb.free_inodes++;
     write_back_sb();
+    write_inode(inode_index, current_node);
+    write_bitmap();
     return 0;
 }
 
@@ -177,7 +178,7 @@ int fs_write(const char *filename, const void *data, int size) {
         return -3;
     }
     if (size < 0) { //Invalid size
-        return -1;
+        return -3;
     }
     int node_idx = find_inode(filename);
     if (node_idx == -1) { //Not a valid filename
@@ -187,21 +188,31 @@ int fs_write(const char *filename, const void *data, int size) {
         return -3;
     }
     inode* working_node = &inode_table[node_idx];
-    int current_block = 0;
-    while(current_block * sb.block_size < size) { //Initialize all needed blocks
-        int block_ptr = working_node->blocks[current_block];
-        if (block_ptr == -1) { //Finds a new block if needed //TODO: Need to make sure -1 is what we expect for the last block
+    int num_of_blocks = 0;
+    int num_blocks_added = 0;
+    while(num_of_blocks * sb.block_size < size) { //Initialize all needed blocks
+        int block_ptr = working_node->blocks[num_of_blocks];
+        if (block_ptr == -1) { //Finds a new block if needed
             block_ptr = find_free_block();
             if (block_ptr == -1) { //Out of space
+                while (num_blocks_added > 0) { //Removes all additionally added blocks if not enough memory
+                    num_of_blocks--;
+                    block_ptr = working_node->blocks[num_of_blocks];
+                    working_node->blocks[num_of_blocks] = -1; 
+                    mark_block_free(block_ptr);
+                    sb.free_blocks++;
+                    num_blocks_added--;
+                }
                 return -2;
             }
-            working_node->blocks[current_block] = block_ptr;
+            working_node->blocks[num_of_blocks] = block_ptr;
             mark_block_used(block_ptr);
             sb.free_blocks--;
+            num_blocks_added++;
         }
-        current_block++;
+        num_of_blocks++;
     }
-    for (int i = current_block; i < MAX_DIRECT_BLOCKS; i++) { //Remove excess blocks
+    for (int i = num_of_blocks; i < MAX_DIRECT_BLOCKS; i++) { //Remove excess blocks
         int block_ptr = working_node->blocks[i];
         if (block_ptr != -1) {
             mark_block_free(block_ptr);
@@ -210,14 +221,15 @@ int fs_write(const char *filename, const void *data, int size) {
         }
     }
     working_node->size = size;
-    write_back_sb();
-    write_inode(node_idx, working_node);
-
-    for (int i = 0; i < current_block; i++) { //Writes data
+    for (int i = 0; i < num_of_blocks; i++) { //Writes data
         void* block_data = (void*) (((char*)data) + (i * sb.block_size));
+        //TODO: If not a perfect multiple of block size
         lseek(disk_fd, working_node->blocks[i] * sb.block_size, SEEK_SET);
         write(disk_fd, block_data, sb.block_size);
     }
+    write_back_sb();
+    write_inode(node_idx, working_node);
+    write_bitmap();
     return 0;
 }
 
@@ -326,5 +338,10 @@ void write_back_sb() {
     char data[BLOCK_SIZE] = {0};
     memcpy(data, &sb, sizeof(superblock));
     lseek(disk_fd, 0, SEEK_SET);
-    write(disk_fd, data, BLOCK_SIZE);
+    write(disk_fd, &sb, BLOCK_SIZE);
+}
+
+void write_bitmap() {
+    lseek(disk_fd, BLOCK_SIZE, SEEK_SET);
+    write(disk_fd, bitmap, sizeof(bitmap));
 }

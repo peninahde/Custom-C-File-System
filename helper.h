@@ -51,3 +51,8 @@ void write_inode(int inode_num, const inode *source);
  * writes sb back to disk after an update
  */
 void write_back_sb();
+
+/**
+ * Writes the bitmap to disk
+ */
+void write_bitmap();
