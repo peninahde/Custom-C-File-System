@@ -63,6 +63,7 @@ int fs_mount(const char *disk_path) {
     lseek(disk_fd, 0, SEEK_SET); //Read Superblock
     read(disk_fd, &sb, sizeof(superblock));
     if(sb.block_size != BLOCK_SIZE || sb.total_blocks != MAX_BLOCKS || sb.total_inodes != MAX_FILES) { //Validate Superblock
+        close(disk_fd);
         disk_fd = -1;
         return -1;
     }
