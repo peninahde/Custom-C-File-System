@@ -12,7 +12,7 @@ int fs_format(const char *disk_path) {
     sb.block_size = BLOCK_SIZE;
     sb.free_blocks = 2550; //TODO: can we make it a non-constant?
     sb.total_inodes = MAX_FILES;
-    sb.free_inodes = 256; //TODO: can we make it a non-constant?
+    sb.free_inodes = MAX_FILES; //TODO: can we make it a non-constant?
 
     // Initialize Block Bitmap (4KB = 1 block)
     for (int i = 0; i < (MAX_BLOCKS / 8); i++){
@@ -37,7 +37,7 @@ int fs_format(const char *disk_path) {
     }
 
     // Initialize Data Blocks (2550 blocks) - open the virtual disk and write until the end of teh blocks
-    int disk_fd = open(disk_path, O_RDWR | O_CREAT | O_TRUNC, 0644);
+    disk_fd = open(disk_path, O_RDWR | O_CREAT | O_TRUNC, 0644);
     if (disk_fd == -1) return -1; 
 
     write(disk_fd, &sb, sizeof(sb)); //write the superblock (block 0)
@@ -45,7 +45,6 @@ int fs_format(const char *disk_path) {
 
     write(disk_fd, bitmap, sizeof(bitmap)); //write the bitmap (block 1)
     lseek(disk_fd, 2 * BLOCK_SIZE, SEEK_SET); // jump to the end of the bitmap block
-    //TODO: Might not be able to do 2*BLOCK_SIZE if not contiguous
     write(disk_fd, inode_table, sizeof(inode_table)); //write the inode table (8 blocks)
 
     lseek(disk_fd, (MAX_BLOCKS * BLOCK_SIZE) - 1, SEEK_SET); //jump to the last byte of the 10MB file
