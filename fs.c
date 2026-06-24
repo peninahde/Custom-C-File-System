@@ -328,7 +328,7 @@ int find_free_inode() {
 
 int find_free_block() {
     for (int i = 10; i < MAX_BLOCKS; i++) {
-        if (bitmap[i/8] & (1 << (i%8))) {
+        if (!(bitmap[i/8] & (1 << (i%8)))) {
             return i;
         }
     }
@@ -336,11 +336,11 @@ int find_free_block() {
 }
 
 void mark_block_used(int block_num) {
-    bitmap[block_num/8] |= (1 << (block_num/8));
+    bitmap[block_num/8] |= (1 << (block_num%8));
 }
 
 void mark_block_free(int block_num) {
-    bitmap[block_num/8] &= ~(1 << (block_num/8));
+    bitmap[block_num/8] &= ~(1 << (block_num%8));
 }
 
 void read_inode(int inode_num, inode *target) {
